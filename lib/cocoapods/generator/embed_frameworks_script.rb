@@ -1,4 +1,5 @@
 require 'cocoapods/xcode/framework_paths'
+require 'cocoapods/xcode/xcframework'
 
 module Pod
   module Generator
@@ -8,11 +9,33 @@ module Pod
       #
       attr_reader :frameworks_by_config
 
+      # @return [Hash{String => Array<Pod::Xcode::XCFramework>}] Multiple lists of xcframeworks per
+      #         configuration.
+      #
+      attr_reader :xcframeworks_by_config
+
+      # @return [Pathname] the root directory of the sandbox
+      #
+      attr_reader :sandbox_root
+
+      # @return [Pod::Platform] the platform of the target on which this script will run
+      #
+      attr_reader :platform
+
       # @param  [Hash{String => Array<FrameworkPaths>] frameworks_by_config
       #         @see #frameworks_by_config
       #
-      def initialize(frameworks_by_config)
+      # @param  [Hash{String => Array<Pod::Xcode::XCFramework>] xcframeworks_by_config
+      #         @see #xcframeworks_by_config
+      #
+      # @param  [Pathname] sandbox_root
+      #         the sandbox root of the installation
+      #
+      def initialize(frameworks_by_config, xcframeworks_by_config, sandbox_root, platform)
         @frameworks_by_config = frameworks_by_config
+        @xcframeworks_by_config = xcframeworks_by_config
+        @sandbox_root = sandbox_root
+        @platform = platform
       end
 
       # Saves the resource script to the given pathname.
@@ -130,7 +153,7 @@ module Pod
           install_dsym() {
             local source="$1"
             if [ -r "$source" ]; then
-              # Copy the dSYM into a the targets temp dir.
+              # Copy the dSYM into the targets temp dir.
               echo "rsync --delete -av "${RSYNC_PROTECT_TMP_FILES[@]}" --filter \\"- CVS/\\" --filter \\"- .svn/\\" --filter \\"- .git/\\" --filter \\"- .hg/\\" --filter \\"- Headers\\" --filter \\"- PrivateHeaders\\" --filter \\"- Modules\\" \\"${source}\\" \\"${DERIVED_FILES_DIR}\\""
               rsync --delete -av "${RSYNC_PROTECT_TMP_FILES[@]}" --filter "- CVS/" --filter "- .svn/" --filter "- .git/" --filter "- .hg/" --filter "- Headers" --filter "- PrivateHeaders" --filter "- Modules" "${source}" "${DERIVED_FILES_DIR}"
 
@@ -204,30 +227,82 @@ module Pod
             STRIP_BINARY_RETVAL=1
           }
 
+          install_xcframework() {
+            local basepath="$1"
+            shift
+            local paths=("$@")
+            
+            # Locate the correct slice of the .xcframework for the current architectures
+            local target_path=""
+            for i in ${!paths[@]}; do
+              if [[ "${paths[$i]}" == *"$arch"* ]]; then
+                # Found a matching slice
+                target_path=${paths[$i]}
+                break;
+              fi
+            done
+            
+            if [[ -z "$target_path" ]]; then
+              echo "warning: [CP] Unable to find matching .xcframework slice in '${paths[@]}' for the current build architectures ($ARCHS)."
+              return
+            fi
+            
+            install_framework "$target_path"
+          }
+
         SH
-        script << "\n" unless frameworks_by_config.each_value.all?(&:empty?)
+        contents_by_config = Hash.new do |hash, key|
+          hash[key] = ""
+        end
         frameworks_by_config.each do |config, frameworks_with_dsyms|
           next if frameworks_with_dsyms.empty?
-          script << %(if [[ "$CONFIGURATION" == "#{config}" ]]; then\n)
           frameworks_with_dsyms.each do |framework_with_dsym|
-            script << %(  install_framework "#{framework_with_dsym.source_path}"\n)
+            contents_by_config[config] << %(  install_framework "#{framework_with_dsym.source_path}"\n)
             # Vendored frameworks might have a dSYM file next to them so ensure its copied. Frameworks built from
             # sources will have their dSYM generated and copied by Xcode.
-            script << %(  install_dsym "#{framework_with_dsym.dsym_path}"\n) unless framework_with_dsym.dsym_path.nil?
+            contents_by_config[config] << %(  install_dsym "#{framework_with_dsym.dsym_path}"\n) unless framework_with_dsym.dsym_path.nil?
             unless framework_with_dsym.bcsymbolmap_paths.nil?
               framework_with_dsym.bcsymbolmap_paths.each do |bcsymbolmap_path|
-                script << %(  install_bcsymbolmap "#{bcsymbolmap_path}"\n)
+                contents_by_config[config] << %(  install_bcsymbolmap "#{bcsymbolmap_path}"\n)
               end
             end
           end
+        end
+        xcframeworks_by_config.each do |config, xcframeworks|
+          next if xcframeworks.empty?
+          xcframeworks.each do |xcframework|
+            relative_path = xcframework.path.relative_path_from(sandbox_root)
+            args = [shell_escape("${PODS_ROOT}/#{relative_path}")]
+            xcframework.slices
+              .select { |slice| slice.platform.symbolic_name == platform.symbolic_name }
+              .each do |slice|
+              args << shell_escape(slice.path.relative_path_from(xcframework.path))
+            end
+            # We pass two arrays to install_xcframework - a nested list of archs, and a list of paths that
+            # contain frameworks for those archs
+            contents_by_config[config] << %(  install_xcframework #{args.join(" ")}\n)
+          end
+        end
+
+        script << "\n" unless contents_by_config.empty?
+        contents_by_config.keys.sort.each do |config|
+          contents = contents_by_config[config]
+          next if contents.empty?
+          script << %(if [[ "$CONFIGURATION" == "#{config}" ]]; then\n)
+          script << contents
           script << "fi\n"
         end
+
         script << <<-SH.strip_heredoc
         if [ "${COCOAPODS_PARALLEL_CODE_SIGN}" == "true" ]; then
           wait
         fi
         SH
         script
+      end
+
+      def shell_escape(value)
+        "\"#{value}\""
       end
     end
   end

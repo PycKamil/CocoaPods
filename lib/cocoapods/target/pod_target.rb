@@ -1,4 +1,5 @@
 require 'cocoapods/xcode/framework_paths'
+require 'cocoapods/xcode/xcframework'
 
 module Pod
   # Stores the information relative to the target used to compile a single Pod.
@@ -408,6 +409,20 @@ module Pod
           end
           if file_accessor.spec.library_specification? && should_build? && build_as_dynamic_framework?
             frameworks << Xcode::FrameworkPaths.new(build_product_path('${BUILT_PRODUCTS_DIR}'))
+          end
+          hash[file_accessor.spec.name] = frameworks
+        end
+      end
+    end
+
+    # @return [Hash{String=>Array<Xcode::XCFramework>}] The vendored and non vendored xcframeworks this target
+    #         depends upon keyed by spec name.
+    #
+    def xcframeworks
+      @xcframeworks ||= begin
+        file_accessors.each_with_object({}) do |file_accessor, hash|
+          frameworks = file_accessor.vendored_xcframeworks.map do |framework_path|
+            Xcode::XCFramework.new(framework_path)
           end
           hash[file_accessor.spec.name] = frameworks
         end

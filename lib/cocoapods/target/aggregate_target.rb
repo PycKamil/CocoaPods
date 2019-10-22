@@ -1,4 +1,5 @@
 require 'cocoapods/xcode/framework_paths'
+require 'cocoapods/xcode/xcframework'
 
 module Pod
   # Stores the information relative to the target used to cluster the targets
@@ -244,6 +245,23 @@ module Pod
           end
         end
         framework_paths_by_config
+      end
+    end
+
+    # @return [Hash{String => Array<Xcode::XCFramework>}] The vendored dynamic artifacts and framework target
+    #         input and output paths grouped by config
+    #
+    def xcframeworks_by_config
+      @xcframeworks_by_config ||= begin
+        xcframeworks_by_config = {}
+        user_build_configurations.each_key do |config|
+          relevant_pod_targets = pod_targets_for_build_configuration(config)
+          xcframeworks_by_config[config] = relevant_pod_targets.flat_map do |pod_target|
+            library_specs = pod_target.library_specs.map(&:name)
+            pod_target.xcframeworks.values_at(*library_specs).flatten.compact.uniq
+          end
+        end
+        xcframeworks_by_config
       end
     end
 

@@ -176,7 +176,16 @@ module Pod
       #         bundles that come shipped with the Pod.
       #
       def vendored_static_frameworks
-        vendored_frameworks - vendored_dynamic_frameworks
+        vendored_frameworks - vendored_dynamic_frameworks - vendored_xcframeworks
+      end
+
+      # @return [Array<Pathname>] The paths of vendored .xcframework bundles
+      #         that come shipped with the Pod.
+      #
+      def vendored_xcframeworks
+        vendored_frameworks.select do |framework|
+          File.extname(framework) == '.xcframework'
+        end
       end
 
       # @param [Array<FileAccessor>] file_accessors

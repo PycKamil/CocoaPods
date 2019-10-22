@@ -660,8 +660,16 @@ module Pod
                 pod_target.framework_paths.values_at(*spec_paths_to_include).flatten.compact.uniq
               end
             end
+            xcframeworks_by_config = target.user_build_configurations.each_with_object({}) do |(config_name, config), paths_by_config|
+              paths_by_config[config_name] = target.dependent_targets_for_test_spec(test_spec, :configuration => config).flat_map do |pod_target|
+                spec_paths_to_include = pod_target.library_specs.map(&:name)
+                spec_paths_to_include -= host_target_spec_names
+                spec_paths_to_include << test_spec.name if pod_target == target
+                pod_target.xcframeworks.values_at(*spec_paths_to_include).flatten.compact.uniq
+              end
+            end
             unless framework_paths_by_config.each_value.all?(&:empty?)
-              generator = Generator::EmbedFrameworksScript.new(framework_paths_by_config)
+              generator = Generator::EmbedFrameworksScript.new(framework_paths_by_config, xcframeworks_by_config, sandbox.root, target.platform)
               update_changed_file(generator, path)
               add_file_to_support_group(path)
             end
@@ -736,8 +744,16 @@ module Pod
                 pod_target.framework_paths.values_at(*spec_paths_to_include).flatten.compact.uniq
               end
             end
+            xcframeworks_by_config = target.user_build_configurations.each_with_object({}) do |(config_name, config), paths_by_config|
+              pod_targets = target.dependent_targets_for_app_spec(app_spec, :configuration => config)
+              paths_by_config[config_name] = pod_targets.flat_map do |pod_target|
+                spec_paths_to_include = pod_target.library_specs.map(&:name)
+                spec_paths_to_include << app_spec.name if pod_target == target
+                pod_target.xcframeworks.values_at(*spec_paths_to_include).flatten.compact.uniq
+              end
+            end
             unless framework_paths_by_config.each_value.all?(&:empty?)
-              generator = Generator::EmbedFrameworksScript.new(framework_paths_by_config)
+              generator = Generator::EmbedFrameworksScript.new(framework_paths_by_config, xcframeworks_by_config, sandbox.root, target.platform)
               update_changed_file(generator, path)
               add_file_to_support_group(path)
             end
