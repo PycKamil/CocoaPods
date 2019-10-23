@@ -572,6 +572,7 @@ module Pod
             # We know that this library target is being built dynamically based
             # on the guard above, so include any vendored static frameworks.
             frameworks.concat vendored_static_frameworks.map { |l| File.basename(l, '.framework') } if target.should_build?
+            frameworks.concat vendored_xcframeworks.map { |f| File.basename(f, '.xcframework') } if target.should_build?
             # Also include any vendored dynamic frameworks of dependencies.
             frameworks.concat dependent_targets.reject(&:should_build?).flat_map { |pt| pt.build_settings[@configuration].dynamic_frameworks_to_import }
           else
@@ -633,7 +634,14 @@ module Pod
 
         # @return [Array<String>]
         define_build_settings_method :vendored_framework_search_paths, :memoized => true do
-          file_accessors.flat_map(&:vendored_frameworks).map { |f| File.join '${PODS_ROOT}', f.dirname.relative_path_from(target.sandbox.root) }
+          search_paths = []
+          search_paths.concat file_accessors
+                                .flat_map(&:vendored_frameworks)
+                                .map { |f| File.join '${PODS_ROOT}', f.dirname.relative_path_from(target.sandbox.root) }
+          search_paths.concat file_accessors
+                                .flat_map(&:vendored_xcframeworks)
+                                .map { |f| File.join '${PODS_ROOT}', f.dirname.relative_path_from(target.sandbox.root) }
+          search_paths
         end
 
         # @return [Array<String>]
@@ -653,6 +661,11 @@ module Pod
         # @return [Array<String>]
         define_build_settings_method :vendored_dynamic_frameworks, :memoized => true do
           file_accessors.flat_map(&:vendored_dynamic_frameworks)
+        end
+
+        # @return [Array<String>]
+        define_build_settings_method :vendored_xcframeworks, :memoized => true do
+          file_accessors.flat_map(&:vendored_xcframeworks)
         end
 
         #-------------------------------------------------------------------------#

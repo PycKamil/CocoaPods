@@ -1,4 +1,4 @@
-require 'macho'
+require 'cocoapods/xcode/linkage_analyzer'
 
 module Pod
   class Sandbox
@@ -168,7 +168,7 @@ module Pod
       #
       def vendored_dynamic_frameworks
         vendored_frameworks.select do |framework|
-          dynamic_binary?(framework + framework.basename('.*'))
+          Xcode::LinkageAnalyzer.dynamic_binary?(framework + framework.basename('.*'))
         end
       end
 
@@ -451,21 +451,6 @@ module Pod
       def expanded_paths(patterns, options = {})
         return [] if patterns.empty?
         path_list.glob(patterns, options).flatten.compact.uniq
-      end
-
-      # @param  [Pathname] binary
-      #         The file to be checked for being a dynamic Mach-O binary.
-      #
-      # @return [Boolean] Whether `binary` can be dynamically linked.
-      #
-      def dynamic_binary?(binary)
-        @cached_dynamic_binary_results ||= {}
-        return @cached_dynamic_binary_results[binary] unless @cached_dynamic_binary_results[binary].nil?
-        return false unless binary.file?
-
-        @cached_dynamic_binary_results[binary] = MachO.open(binary).dylib?
-      rescue MachO::MachOError
-        @cached_dynamic_binary_results[binary] = false
       end
 
       #-----------------------------------------------------------------------#

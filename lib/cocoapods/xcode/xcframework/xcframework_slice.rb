@@ -4,7 +4,7 @@ module Pod
     class XCFramework
       class Slice
 
-        # @return [Pathname] the path to the root of this framework slice
+        # @return [Pathname] the path to the .framework root of this framework slice
         #
         attr_reader :path
 
@@ -44,6 +44,10 @@ module Pod
 
         def simulator_variant?
           @platform_variant == :simulator
+        end
+
+        def library_path
+          path + name
         end
       end
     end

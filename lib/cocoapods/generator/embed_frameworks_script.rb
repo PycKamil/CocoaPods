@@ -1,5 +1,4 @@
-require 'cocoapods/xcode/framework_paths'
-require 'cocoapods/xcode/xcframework'
+require 'cocoapods/xcode'
 
 module Pod
   module Generator
@@ -271,11 +270,15 @@ module Pod
         xcframeworks_by_config.each do |config, xcframeworks|
           next if xcframeworks.empty?
           xcframeworks.each do |xcframework|
+            # It's possible for an .xcframework to include slices of different linkages,
+            # so we must select only dynamic slices to pass to the script
+            slices = xcframework.slices
+              .select { |slice| slice.platform.symbolic_name == platform.symbolic_name }
+              .select { |slice| Xcode::LinkageAnalyzer.dynamic_binary?(slice.library_path) }
+            next if slices.empty?
             relative_path = xcframework.path.relative_path_from(sandbox_root)
             args = [shell_escape("${PODS_ROOT}/#{relative_path}")]
-            xcframework.slices
-              .select { |slice| slice.platform.symbolic_name == platform.symbolic_name }
-              .each do |slice|
+            slices.each do |slice|
               args << shell_escape(slice.path.relative_path_from(xcframework.path))
             end
             # We pass two arrays to install_xcframework - a nested list of archs, and a list of paths that
