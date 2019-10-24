@@ -34,7 +34,6 @@ module Pod
         def validate!
           verify_no_duplicate_framework_and_library_names
           verify_no_static_framework_transitive_dependencies
-          verify_swift_pods_swift_version
           verify_swift_pods_have_module_dependencies
         end
 
